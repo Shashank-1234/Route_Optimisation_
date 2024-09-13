@@ -1,5 +1,212 @@
-'''
+import pandas as pd
+import numpy as np
 
+# Load the distance matrix from Excel
+distance_matrix = pd.read_excel("path_to_excel_file.xlsx", index_col=0)
+distance_matrix = distance_matrix.values  # Convert to numpy array for easier indexing
+
+# Define the depot (point_0 is depot) and the other points
+depot = 0  # Depot is point_0
+
+# Number of points (customers + depot)
+num_points = distance_matrix.shape[0]
+
+# Set up demand and service times
+demand = np.ones(num_points)  # Every customer has a demand of 1
+service_time = np.full(num_points, 10)  # Service time is 10 minutes for every point
+
+
+def split_algorithm(customers, depot, vehicle_capacity, distance_matrix, service_time, max_trip_cost):
+    n = len(customers)
+    V = [float('inf')] * (n + 1)  # Initialize the cost for each customer
+    V[0] = 0  # Starting cost at depot
+    P = [-1] * (n + 1)  # To store split points
+
+    for i in range(1, n + 1):
+        load = 0
+        cost = 0
+        j = i
+        while j <= n:
+            load += 1  # Each customer has demand of 1, so we increment the load
+            if j == i:
+                # If it's the first customer in the trip, calculate cost from depot to this customer and back
+                cost = distance_matrix[depot, customers[i - 1]] + service_time[customers[i - 1]] + distance_matrix[customers[i - 1], depot]
+            else:
+                # If it's a subsequent customer, calculate cost between customers and back to depot
+                cost += distance_matrix[customers[j - 2], customers[j - 1]] + service_time[customers[j - 1]] + distance_matrix[customers[j - 1], depot]
+            
+            # Check if load and cost constraints are satisfied
+            if load <= vehicle_capacity and cost <= max_trip_cost:
+                if V[i - 1] + cost < V[j]:
+                    V[j] = V[i - 1] + cost
+                    P[j] = i - 1
+            else:
+                break  # If load or cost exceeds, stop the loop
+            j += 1
+
+    return V, P
+
+
+
+def extract_vrp_solution(P, customers):
+    n = len(customers)
+    trips = []
+    j = n
+    while j > 0:
+        i = P[j]
+        trip = customers[i:j]  # Extract the trip between customers i and j
+        trips.append(trip)
+        j = i
+    return trips
+
+
+
+
+
+
+# Deap
+
+from deap import base, creator, tools, algorithms
+
+# Define the problem as a minimization problem
+creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+creator.create("Individual", list, fitness=creator.FitnessMin)
+
+# Initialize the toolbox
+toolbox = base.Toolbox()
+
+# Register the genetic algorithm components
+toolbox.register("indices", np.random.permutation, num_points - 1)  # Random sequence of customer points
+toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.indices)
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+
+def evaluate(individual):
+    # Individual is a sequence of customer indices (excluding depot)
+    customers = individual
+    
+    # Run the split algorithm on the sequence of customers
+    V, P = split_algorithm(customers, depot=depot, vehicle_capacity=10,  # Assume vehicle can hold 10 units
+                           distance_matrix=distance_matrix, service_time=service_time, max_trip_cost=100)  # Assume max cost
+    
+    # Extract trips and calculate total cost
+    trips = extract_vrp_solution(P, customers)
+    total_cost = V[-1]  # Cost to reach the last customer
+    return (total_cost,)
+
+# Register evaluation and genetic operators
+toolbox.register("evaluate", evaluate)
+toolbox.register("mate", tools.cxOrdered)
+toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
+toolbox.register("select", tools.selTournament, tournsize=3)
+
+# Genetic Algorithm parameters
+population_size = 100
+num_generations = 500
+mutation_prob = 0.2
+crossover_prob = 0.8
+
+# Generate the initial population
+population = toolbox.population(n=population_size)
+
+# Run the Genetic Algorithm
+algorithms.eaSimple(population, toolbox, cxpb=crossover_prob, mutpb=mutation_prob,
+                    ngen=num_generations, verbose=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'''
 import pandas as pd
 import numpy as np
 import random
@@ -122,6 +329,13 @@ print("Best Route:", best_solution)
 
 '''
 
+
+
+
+
+
+
+'''
 import pandas as pd
 import numpy as np
 import random
@@ -260,3 +474,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''
