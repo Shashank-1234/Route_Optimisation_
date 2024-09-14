@@ -48,7 +48,7 @@ for i, origin in enumerate(coordinates):
 distance_df = pd.DataFrame(distance_matrix, columns=[f'Point_{i}' for i in range(n)], index=[f'Point_{i}' for i in range(n)])
 
 # Export the distance matrix to an Excel file
-distance_df.to_excel('distance_matrix.xlsx', index=True)
+#distance_df.to_excel('distance_matrix.xlsx', index=True)
 
 # Print confirmation
-print("Distance matrix exported to 'distance_matrix.xlsx'")
+#print("Distance matrix exported to 'distance_matrix.xlsx'")
