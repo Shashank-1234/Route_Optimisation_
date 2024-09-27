@@ -1,183 +1,114 @@
-import pandas as pd
-import numpy as np
 import random
-from deap import base, creator, tools
-import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from deap import base, creator, tools, algorithms
 
 # Load the distance and time matrices from Excel
 file_path = "Algo/gmaps_distance_time_matrix_pooled.xlsx"
-distance_matrix_df = pd.read_excel(file_path, sheet_name="Distance_Matrix")
-time_matrix_df = pd.read_excel(file_path, sheet_name="Time_Matrix")
 
-# Convert to numpy arrays (without index column)
-distance_matrix = distance_matrix_df.drop(columns=['Unnamed: 0']).values
-time_matrix = time_matrix_df.drop(columns=['Unnamed: 0']).values
+# Load the matrices, skipping the first row and first column to get rid of the labels
+distance_matrix_df = pd.read_excel(file_path, sheet_name="Distance_Matrix", index_col=0)
+time_matrix_df = pd.read_excel(file_path, sheet_name="Time_Matrix", index_col=0)
 
-# Ensure the time matrix is in minutes (assuming it's in seconds)
-time_matrix = time_matrix / 60  # Convert seconds to minutes if needed
+# Ensure that the matrices are numeric by converting the data to numeric values
+distance_matrix_df = distance_matrix_df.apply(pd.to_numeric, errors='coerce')
+time_matrix_df = time_matrix_df.apply(pd.to_numeric, errors='coerce')
 
-# Set Parameters and Constraints
-n = distance_matrix.shape[0]  # Number of cities (including depot)
-working_hours = 8 * 60  # Max working minutes per day (8 hours)
-service_time_per_bin = 5  # Service time per bin (minutes)
-unloading_time_per_round = 30  # Unloading time per round (minutes)
-max_bins_per_round = 11  # Max bins per round
-total_break_time = 30  # Total break time for the day
+# Convert DataFrame to NumPy arrays
+distance_matrix = distance_matrix_df.values
+time_matrix = time_matrix_df.values
 
-# Genetic Algorithm parameters
-population_size = 50
-generations = 100
-crossover_probability = 0.8
-mutation_probability = 0.2
-tournament_size = 3
+# Parameters
+num_points = distance_matrix.shape[0]  # Number of points (including depot)
+num_trucks = 2  # Number of trucks
+max_bins_per_route = 10  # Maximum number of bins per route
+max_time_per_route = 8 * 3600  # 8 hours in seconds
+service_time_per_bin = 5 * 60  # 5 minutes in seconds
+break_time_per_shift = 30 * 60  # 30 minutes in seconds
 
 # DEAP setup
-creator.create("FitnessMin", base.Fitness, weights=(-1.0, -1.0))  # Minimize distance and time
-creator.create("Individual", list, fitness=creator.FitnessMin)
-toolbox = base.Toolbox()
+creator.create("FitnessMulti", base.Fitness, weights=(-1.0, -1.0))  # Minimize both objectives
+creator.create("Individual", list, fitness=creator.FitnessMulti)
 
-# Individual creation (random route visiting all bins)
 def create_individual():
-    return [0] + random.sample(range(1, n), n - 1) + [0]  # Start and end at depot
+    """Create an individual with random routes for each truck."""
+    individual = []
+    for _ in range(num_trucks):
+        route = random.sample(range(1, num_points), max_bins_per_route)  # Randomly assign bins
+        individual.append(route)
+    return creator.Individual(individual)
 
-toolbox.register("individual", tools.initIterate, creator.Individual, create_individual)
-toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+def evaluate(individual):
+    """Evaluate the individual based on total distance and time constraints."""
+    total_distance = 0
+    total_time = 0
 
-# Register selection, crossover, and mutation functions
-toolbox.register("select", tools.selTournament, tournsize=tournament_size)
-toolbox.register("mate", tools.cxOrdered)  # Sequential Constructive Crossover (SCX)
-toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.2)  # Swap mutation
-
-# Step 3: Calculate travel time in minutes based on time matrix
-def calculate_travel_time(route):
-    return sum(time_matrix[route[i]][route[i + 1]] for i in range(len(route) - 1))
-
-# Split route for multiple rounds and two trucks
-def split_route(individual):
-    sub_routes_truck1 = []
-    sub_routes_truck2 = []
-
-    visited_bins = set()  # Track visited bins
-    current_truck1_route = [0]  # Start at depot for truck 1
-    current_truck2_route = [0]  # Start at depot for truck 2
-
-    current_truck1_time = 0
-    current_truck2_time = 0
-    current_truck1_bins = 0
-    current_truck2_bins = 0
-
-    for next_city in individual[1:-1]:
-        if next_city in visited_bins:
+    for truck_route in individual:
+        if not truck_route:  # If no route, skip
             continue
+        # Add depot as start and end point (0)
+        truck_route = [0] + truck_route + [0]
+        
+        route_distance = 0
+        route_time = 0
+        for i in range(len(truck_route) - 1):
+            route_distance += distance_matrix[truck_route[i], truck_route[i + 1]]
+            route_time += time_matrix[truck_route[i], truck_route[i + 1]]
 
-        # Try to assign bins to Truck 1
-        travel_time_to_next = time_matrix[current_truck1_route[-1]][next_city]
-        if current_truck1_bins < max_bins_per_round and current_truck1_time + travel_time_to_next + service_time_per_bin <= working_hours:
-            current_truck1_route.append(next_city)
-            current_truck1_time += travel_time_to_next + service_time_per_bin
-            current_truck1_bins += 1
-            visited_bins.add(next_city)
-        # If Truck 1 is full or exceeds time, assign to Truck 2
-        else:
-            travel_time_to_next = time_matrix[current_truck2_route[-1]][next_city]
-            if current_truck2_bins < max_bins_per_round and current_truck2_time + travel_time_to_next + service_time_per_bin <= working_hours:
-                current_truck2_route.append(next_city)
-                current_truck2_time += travel_time_to_next + service_time_per_bin
-                current_truck2_bins += 1
-                visited_bins.add(next_city)
+        # Add service time per bin and break time if applicable
+        route_time += len(truck_route[1:-1]) * service_time_per_bin  # Ignore depot in service time
+        route_time += break_time_per_shift  # Break per shift
+        
+        # Update total distance and time
+        total_distance += route_distance
+        total_time += route_time
+
+    # Objective 1: Minimize total distance
+    # Objective 2: Minimize time violation (penalty if exceeding 8 hours)
+    time_violation = max(0, total_time - max_time_per_route)
+    return total_distance, time_violation
+
+def crossover(ind1, ind2):
+    """Crossover between two individuals (exchange routes between trucks)."""
+    truck_idx = random.randint(0, num_trucks - 1)  # Choose a random truck
+    ind1[truck_idx], ind2[truck_idx] = ind2[truck_idx], ind1[truck_idx]  # Swap routes
+    return ind1, ind2
+
+def mutate(individual):
+    """Mutate an individual by swapping two random bins between routes."""
+    truck_idx = random.randint(0, num_trucks - 1)
+    route = individual[truck_idx]
+    if len(route) >= 2:
+        i, j = random.sample(range(len(route)), 2)
+        route[i], route[j] = route[j], route[i]
+    return individual,
+
+# Genetic Algorithm setup
+toolbox = base.Toolbox()
+toolbox.register("individual", create_individual)
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+toolbox.register("evaluate", evaluate)
+toolbox.register("mate", crossover)
+toolbox.register("mutate", mutate)
+toolbox.register("select", tools.selNSGA2)
+
+# Parameters
+population_size = 100
+num_generations = 100
+crossover_probability = 0.7
+mutation_probability = 0.2
+
+def main():
+    population = toolbox.population(n=population_size)
+    algorithms.eaMuPlusLambda(population, toolbox, mu=population_size, lambda_=population_size,
+                              cxpb=crossover_probability, mutpb=mutation_probability, ngen=num_generations,
+                              stats=None, halloffame=None, verbose=True)
     
-    # If there are still bins unvisited and both trucks are full, return to the depot
-    current_truck1_route.append(0)
-    current_truck2_route.append(0)
+    # Get the Pareto front
+    pareto_front = tools.sortNondominated(population, len(population), first_front_only=True)[0]
+    return pareto_front
 
-    sub_routes_truck1.append(current_truck1_route)
-    sub_routes_truck2.append(current_truck2_route)
-
-    return sub_routes_truck1, sub_routes_truck2
-
-# Fitness evaluation
-def evaluate_individual(individual):
-    sub_routes_truck1, sub_routes_truck2 = split_route(individual)
-
-    total_distance_truck1 = sum(distance_matrix[route[i]][route[i + 1]] for route in sub_routes_truck1 for i in range(len(route) - 1))
-    total_time_truck1 = sum(calculate_travel_time(route) for route in sub_routes_truck1)
-
-    total_distance_truck2 = sum(distance_matrix[route[i]][route[i + 1]] for route in sub_routes_truck2 for i in range(len(route) - 1))
-    total_time_truck2 = sum(calculate_travel_time(route) for route in sub_routes_truck2)
-
-    combined_fitness = (total_distance_truck1 + total_distance_truck2), (total_time_truck1 + total_time_truck2)
-    return combined_fitness
-
-toolbox.register("evaluate", evaluate_individual)
-
-# Genetic Algorithm Execution
-def run_ga_with_immigration(runs=10, generations=100, pop_size=50, immigration_rate=0.05):
-    best_solutions = []
-    for run in range(runs):
-        population = toolbox.population(n=pop_size)
-
-        for ind in population:
-            ind.fitness.values = toolbox.evaluate(ind)
-
-        for gen in range(generations):
-            selected = toolbox.select(population, len(population))
-            offspring = list(map(toolbox.clone, selected))
-
-            for child1, child2 in zip(offspring[::2], offspring[1::2]):
-                if random.random() < crossover_probability:
-                    toolbox.mate(child1, child2)
-                    del child1.fitness.values
-                    del child2.fitness.values
-
-                if random.random() < mutation_probability:
-                    toolbox.mutate(child1)
-                    toolbox.mutate(child2)
-                    del child1.fitness.values
-                    del child2.fitness.values
-
-            for ind in offspring:
-                if not ind.fitness.valid:
-                    ind.fitness.values = toolbox.evaluate(ind)
-
-            population[:] = offspring
-
-        best_individual = tools.selBest(population, 1)[0]
-        best_solutions.append(best_individual)
-
-    return best_solutions
-
-# Run the genetic algorithm
-best_solutions = run_ga_with_immigration()
-
-# Function to print the best solution in the desired format
-def print_best_solution(best_solution):
-    sub_routes_truck1, sub_routes_truck2 = split_route(best_solution)
-
-    total_time_truck1 = sum(calculate_travel_time(route) + len(route) * service_time_per_bin + unloading_time_per_round for route in sub_routes_truck1)
-    total_time_truck2 = sum(calculate_travel_time(route) + len(route) * service_time_per_bin + unloading_time_per_round for route in sub_routes_truck2)
-
-    total_time = total_time_truck1 + total_time_truck2
-
-    print("\n--- Best Solution ---\n")
-    print("Truck 1 Routes:")
-    for i, route in enumerate(sub_routes_truck1):
-        route_str = ' -> '.join(map(str, route))
-        route_time = calculate_travel_time(route) + len(route) * service_time_per_bin + unloading_time_per_round
-        print(f"Round {i + 1}: {route_str} | Time: {route_time} minutes")
-
-    print("\nTruck 2 Routes:")
-    for i, route in enumerate(sub_routes_truck2):
-        route_str = ' -> '.join(map(str, route))
-        route_time = calculate_travel_time(route) + len(route) * service_time_per_bin + unloading_time_per_round
-        print(f"Round {i + 1}: {route_str} | Time: {route_time} minutes")
-
-    print(f"\nTotal Time for Truck 1: {total_time_truck1} minutes")
-    print(f"Total Time for Truck 2: {total_time_truck2} minutes")
-    print(f"Overall Total Time: {total_time} minutes")
-
-# Get the best solution after running the genetic algorithm
-best_solution = tools.selBest(best_solutions, 1)[0]
-
-
-# Print the best solution in the requested format
-print_best_solution(best_solution)
+if __name__ == "__main__":
+    pareto_front = main()
+    for ind in pareto_front:
+        print(f"Route: {ind}, Fitness: {ind.fitness.values}")

@@ -206,16 +206,16 @@ def run_ga_with_immigration(runs=10, generations=1000, pop_size=100, immigration
 
         for gen in range(generations):
             # Selection and cloning
-            selected = toolbox.select(population, len(population))
+            selected = tools.selTournament(population, len(population), tournsize=3)  # Stronger selection pressure
             offspring = list(map(toolbox.clone, selected))
 
             # Apply crossover and mutation
             for child1, child2 in zip(offspring[::2], offspring[1::2]):
-                if random.random() < 0.9:  # Higher crossover probability
+                if random.random() < 0.8:  # Adjusted crossover probability
                     toolbox.mate(child1, child2)
                     del child1.fitness.values, child2.fitness.values
 
-                if random.random() < 0.3:  # Lower mutation probability
+                if random.random() < 0.15:  # Adjusted mutation probability
                     toolbox.mutate(child1)
                     toolbox.mutate(child2)
                     del child1.fitness.values, child2.fitness.values
@@ -226,15 +226,15 @@ def run_ga_with_immigration(runs=10, generations=1000, pop_size=100, immigration
                     ind.fitness.values = toolbox.evaluate(ind)
 
             # Immigration: Introduce new random individuals less frequently
-            if gen % 30 == 0:  # Every 30 generations
+            if gen % 50 == 0:  # Adjusted immigration interval
                 num_immigrants = int(immigration_rate * pop_size)
                 for _ in range(num_immigrants):
                     immigrant = toolbox.individual()
                     population[random.randint(0, len(population) - 1)] = immigrant
 
-            # Apply elitism: keep the top 2 individuals
-            best_individuals = tools.selBest(population, 2)  # Top 2
-            population[:2] = best_individuals  # Ensure they survive
+            # Apply elitism: keep the top 5 individuals
+            best_individuals = tools.selBest(population, 5)  # Increased elitism
+            population[:5] = best_individuals  # Ensure they survive
 
             # Replace population with the offspring
             population[:] = offspring
@@ -252,6 +252,163 @@ def run_ga_with_immigration(runs=10, generations=1000, pop_size=100, immigration
         best_sub_routes.append(best_sub_route)
 
     return best_distances, best_sub_routes, distance_history
+
+def run_ga_with_adaptive_immigration(runs=10, generations=1000, pop_size=500, immigration_rate=0.02, stagnation_limit=50):
+    best_distances = []
+    best_sub_routes = []
+    distance_history = []
+
+    for run in range(runs):
+        population = toolbox.population(n=pop_size)
+
+        # Evaluate initial population
+        for ind in population:
+            ind.fitness.values = toolbox.evaluate(ind)
+
+        best_distance_overall = float('inf')
+        stagnation_counter = 0  # Counter to track stagnation
+
+        for gen in range(generations):
+            # Selection and cloning
+            selected = tools.selTournament(population, len(population), tournsize=3)
+            offspring = list(map(toolbox.clone, selected))
+
+            # Apply crossover and mutation
+            for child1, child2 in zip(offspring[::2], offspring[1::2]):
+                if random.random() < 0.8:  # Crossover probability
+                    toolbox.mate(child1, child2)
+                    del child1.fitness.values, child2.fitness.values
+
+                if random.random() < 0.05:  # Further reduced mutation probability
+                    toolbox.mutate(child1)
+                    toolbox.mutate(child2)
+                    del child1.fitness.values, child2.fitness.values
+
+            # Evaluate the offspring
+            for ind in offspring:
+                if not ind.fitness.valid:
+                    ind.fitness.values = toolbox.evaluate(ind)
+
+            # Apply elitism
+            best_individuals = tools.selBest(population, 5)
+            population[:5] = best_individuals
+            population[:] = offspring
+
+            # Record best distance for this generation
+            best_individual = tools.selBest(population, 1)[0]
+            best_distance = evaluate_individual(best_individual)[0]
+            distance_history.append(best_distance)
+
+            # Check for stagnation
+            if best_distance < best_distance_overall:
+                best_distance_overall = best_distance
+                stagnation_counter = 0  # Reset stagnation counter if improvement found
+            else:
+                stagnation_counter += 1
+
+            # Apply immigration only if stagnation occurs
+            if stagnation_counter >= stagnation_limit:
+                num_immigrants = int(immigration_rate * pop_size)
+                for _ in range(num_immigrants):
+                    immigrant = toolbox.individual()
+                    population[random.randint(0, len(population) - 1)] = immigrant
+                stagnation_counter = 0  # Reset stagnation counter after immigration
+
+        # Get best individual after all generations
+        best_individual = tools.selBest(population, 1)[0]
+        best_distance = evaluate_individual(best_individual)[0]
+        best_sub_route = split_route(best_individual)
+        best_distances.append(best_distance)
+        best_sub_routes.append(best_sub_route)
+
+    return best_distances, best_sub_routes, distance_history
+
+
+def run_ga_with_dynamic_mutation_and_refined_immigration(runs=10, generations=1000, pop_size=50, immigration_rate=0.01, stagnation_limit=50, dynamic_mutation=True):
+    best_distances = []
+    best_sub_routes = []
+    distance_history = []
+
+    for run in range(runs):
+        population = toolbox.population(n=pop_size)
+
+        # Evaluate initial population
+        for ind in population:
+            ind.fitness.values = toolbox.evaluate(ind)
+
+        best_distance_overall = float('inf')
+        stagnation_counter = 0  # Counter to track stagnation
+        mutation_probability = 0.05  # Start with a low mutation rate
+
+        for gen in range(generations):
+            # Selection and cloning
+            selected = tools.selTournament(population, len(population), tournsize=3)
+            offspring = list(map(toolbox.clone, selected))
+
+            # Apply crossover and mutation
+            for child1, child2 in zip(offspring[::2], offspring[1::2]):
+                if random.random() < 0.8:  # Crossover probability
+                    toolbox.mate(child1, child2)
+                    del child1.fitness.values, child2.fitness.values
+
+                # Dynamic mutation rate adjustment
+                if random.random() < mutation_probability:  
+                    toolbox.mutate(child1)
+                    toolbox.mutate(child2)
+                    del child1.fitness.values, child2.fitness.values
+
+            # Evaluate the offspring
+            for ind in offspring:
+                if not ind.fitness.valid:
+                    ind.fitness.values = toolbox.evaluate(ind)
+
+            # Apply elitism
+            best_individuals = tools.selBest(population, 10)
+            population[:10] = best_individuals
+            population[:] = offspring
+
+            # Record best distance for this generation
+            best_individual = tools.selBest(population, 1)[0]
+            best_distance = evaluate_individual(best_individual)[0]
+            distance_history.append(best_distance)
+
+            # Check for stagnation
+            if best_distance < best_distance_overall:
+                best_distance_overall = best_distance
+                stagnation_counter = 0  # Reset stagnation counter if improvement found
+
+                # Reduce mutation rate if improving
+                if dynamic_mutation and mutation_probability > 0.01:
+                    mutation_probability *= 0.9  # Gradually reduce mutation rate during improvement
+
+            else:
+                stagnation_counter += 1
+
+                # Increase mutation rate if stagnation occurs
+                if dynamic_mutation and mutation_probability < 0.1:
+                    mutation_probability *= 1.1  # Gradually increase mutation rate during stagnation
+
+            # Apply immigration only if stagnation occurs
+            if stagnation_counter >= stagnation_limit:
+                num_immigrants = int(immigration_rate * pop_size)
+                
+                # Introduce immigrants by crossing them with the best individual
+                for _ in range(num_immigrants):
+                    immigrant = toolbox.clone(best_individual)
+                    toolbox.mutate(immigrant)  # Mutate immigrant rather than creating random individuals
+                    population[random.randint(5, len(population) - 1)] = immigrant
+
+                stagnation_counter = 0  # Reset stagnation counter after immigration
+
+        # Get best individual after all generations
+        best_individual = tools.selBest(population, 1)[0]
+        best_distance = evaluate_individual(best_individual)[0]
+        best_sub_route = split_route(best_individual)
+        best_distances.append(best_distance)
+        best_sub_routes.append(best_sub_route)
+
+    return best_distances, best_sub_routes, distance_history
+
 
 
 '''
@@ -276,9 +433,33 @@ plt.ylabel('Best Distance')
 plt.grid(True)
 plt.show()
 '''
+'''
 
 # Run the genetic algorithm and print results
 best_distances, best_sub_routes, distance_history = run_ga_with_immigration(runs=10, generations=100, pop_size=50)
+
+# Print best routes
+for i, sub_routes in enumerate(best_sub_routes):
+    print(f"\nBest routes for run {i + 1}:")
+    print_routes(sub_routes)
+
+# Print statistics
+print(f"Best distances over 10 runs: {best_distances}")
+print(f"Average Best Distance: {mean(best_distances)}")
+print(f"Standard Deviation: {stdev(best_distances)}")
+
+# Plot convergence
+plt.plot(distance_history)
+plt.title('Convergence of Genetic Algorithm')
+plt.xlabel('Generations')
+plt.ylabel('Best Distance')
+plt.grid(True)
+plt.show()
+
+'''
+
+# Run the genetic algorithm and print results
+best_distances, best_sub_routes, distance_history = run_ga_with_dynamic_mutation_and_refined_immigration(runs=10, generations=100, pop_size=50)
 
 # Print best routes
 for i, sub_routes in enumerate(best_sub_routes):
