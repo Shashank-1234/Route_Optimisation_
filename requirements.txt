@@ -5,3 +5,5 @@ folium
 requests
 matplotlib
 openpyxl
+pybind11
+cmake
