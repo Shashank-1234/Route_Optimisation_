@@ -1,0 +1,98 @@
+# Optimization of Solid Waste Collection Routes using Hybrid Genetic Algorithm
+
+This repository contains the implementation of a Hybrid Genetic Algorithm (HGA) to optimize solid waste collection routes in Dhanbad, India. The project focuses on minimizing CO2 emissions, distance, and duration using the PyVRP library and a custom emissions model based on the EMFAC CARB standards.
+
+## Project Value & Impact
+
+Solid waste collection is a critical urban challenge. This project implements a **state-of-the-art Hybrid Genetic Algorithm** to solve the Capacitated Vehicle Routing Problem (CVRP) with a specific focus on environmental sustainability. Unlike traditional routing which minimizes only distance, this model:
+-   **Minimizes CO2 Emissions**: Incorporates a Carbon Correction Factor (CCF) based on vehicle speeds.
+-   **Optimizes Fleet Usage**: efficiently serves 124 collection points using an optimized fleet.
+-   **Uses Real-World Constraints**: Accounts for traffic-adjusted travel times.
+
+This implementation demonstrates advanced Operations Research (OR) techniques applied to Environmental Engineering.
+
+## Key Features
+
+-   **Hybrid Genetic Algorithm**: Combines GA with local search operators (2-OPT, Swap*, Relocate) for efficient routing.
+-   **Emissions-Aware Optimization**: Optimizes for lowest environmental impact.
+-   **Real-World Data**: Uses Google Maps Distance and Time matrices.
+-   **Modern Stack**: Built with `PyVRP` and `Pandas`.
+
+## Data Acquisition
+
+The routing logic relies on high-fidelity travel data:
+-   **Distance & Time Matrices**: Generated using the **Google Maps Distance Matrix API** to capture real-world road network constraints and historical traffic patterns.
+-   **Traffic Awareness**: Unlike Euclidean distance models, this project utilizes temporal travel data to approximate congestion effects on vehicle speed and emissions.
+
+## Methodology & Algorithm
+
+This project bridges the gap between **Environmental Engineering** and **Operations Research**:
+
+1.  **Non-Linear Cost Function**: Implemented a custom fitness function integrating the **EMFAC-CARB** model.
+    -   $$ E_{total} = \sum E_{ij} $$ where emissions $$E_{ij}$$ are non-linearly dependent on speed.
+2.  **High-Performance Solver**: Leverages the **PyVRP** engine (based on the state-of-the-art HGS-CVRP algorithm) to handle NP-Hard routing constraints efficiently.
+3.  **Constraint Handling**: Manages complex capacity constraints and fleet sizing dynamics implicitly during the search process.
+
+## Future Scope
+
+While this repository establishes a robust baseline for emissions-based routing, future iterations aim to include:
+-   **Real-Time API Integration**: Dynamic fetching of traffic data during route execution.
+-   **Interactive Dashboard**: A web-based UI (e.g., Streamlit) for dynamic demand adjustment and route visualization.
+-   **Heterogeneous Fleet**: Support for vehicles with varying emission factors and capacities.
+
+## Installation
+
+1.  Clone the repository.
+2.  Create a virtual environment:
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+3.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## Usage
+
+To run the optimization:
+
+```bash
+python run_optimization.py
+```
+
+This will output the optimal routes for each vehicle and the total emissions.
+
+### (Optional) Visualization Setup
+
+To visualize the routes on a real map, you need to set up a local OSRM (Open Source Routing Machine) server, as the Google Maps API was used for the static matrices.
+
+1.  **Download Map Data**: Download the `.osm.pbf` file for your region (e.g., India or specific state) from [Geofabrik](https://download.geofabrik.de/).
+2.  **Run OSRM Backend**: Use Docker to spin up the OSRM server:
+    ```bash
+    docker run -t -v "${PWD}:/data" osrm/osrm-backend osrm-extract -p /opt/car.lua /data/your-region-latest.osm.pbf
+    docker run -t -v "${PWD}:/data" osrm/osrm-backend osrm-partition /data/your-region-latest.osrm
+    docker run -t -v "${PWD}:/data" osrm/osrm-backend osrm-customize /data/your-region-latest.osrm
+    docker run -t -i -p 5000:5000 -v "${PWD}:/data" osrm/osrm-backend osrm-routed --algorithm mld /data/your-region-latest.osrm
+    ```
+3.  **Update Script**: Modify `run_optimization.py` or use the legacy `Algo/trial_complete.py` to query `http://localhost:5000` for route geometries.
+
+## Results
+
+![Route Visualization](data/route_visualization.png)
+
+*Figure: Optimized routes for waste collection.*
+
+The HGA approach reduced total emissions to approximately **68.2 kg** for the study area, demonstrating significant environmental benefits over traditional routing.
+
+## Citation
+
+This project is based on the following research:
+
+> **Shashank Dutt Sagiraju**, "Optimization of Solid Waste Collection Routes for Emissions Reduction Using a Hybrid Genetic Algorithm," *Department of Environmental Engineering, Indian Institute of Technology (Indian School of Mines), Dhanbad*, 2025.
+
+## Author
+
+**Shashank Dutt Sagiraju**
+Department of Environmental Engineering
+Indian Institute of Technology (Indian School of Mines), Dhanbad
